@@ -10,5 +10,5 @@ cd dist
 git init
 git add -A
 git commit -m 'deploy'
-git push -f git@github.com:stark21/tezos-transactions-view.git master:gh-pages
+git push -f git@github.com:sstark21/tezos-transactions-view.git master:gh-pages
 cd -

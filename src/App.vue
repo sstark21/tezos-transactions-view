@@ -1,10 +1,6 @@
 <template>
   <v-app>
-    <v-app-bar
-      app
-      color="primary"
-      dark
-    >
+    <v-app-bar app color="primary" dark>
       <!-- <div class="d-flex align-center">
         <v-img
           alt="Vuetify Logo"
@@ -44,13 +40,13 @@
 </template>
 
 <script>
-import TransactionsView from './components/TransactionsView'
+import TransactionsView from "./components/TransactionsView";
 
 export default {
-  name: 'App',
+  name: "App",
 
   components: {
-    TransactionsView
+    TransactionsView,
   },
 
   data: () => ({
@@ -58,3 +54,9 @@ export default {
   }),
 };
 </script>
+
+<style>
+html {
+  overflow-y: auto;
+}
+</style>

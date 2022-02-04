@@ -83,7 +83,12 @@
                                     amet,
                                 </v-list-item-subtitle>
                                 <v-list-item-subtitle>
-                                    consectetur adipiscing elit.
+                                    Transfers:
+                                    {{
+                                        item.hasOwnProperty("transfers")
+                                            ? item.transfers.length
+                                            : "0"
+                                    }}
                                 </v-list-item-subtitle>
                             </v-list-item-content>
                         </v-list-item>
@@ -97,10 +102,9 @@
 
 
 <script>
-/* TODO
+/* TODO:
   Пришлось увеличить кнопку до 48рх, подумать как избежать такого
   Тень на инпуте и кнопках разная, исправить
-  Написать хороший Readme c заданием
 */
 
 import Service from "../services/request-service";
@@ -126,22 +130,30 @@ export default {
             this.$set(this, "benched", 0);
         },
         getTransactions(method) {
-            this.$set(this, "loading", true);
+            this.loading = true;
 
             Service.getTransactions(
                 this.textField,
                 this.itemsPerPage,
                 this.page
             )
-                .then((res) => {
-                    if (method === "PUT") this.$set(this, "items", res.data);
+                .then((transactionsRes) => {
+                    if (method === "PUT") this.items = transactionsRes.data;
                     if (method === "PATCH")
-                        this.$set(this, "items", [...this.items, ...res.data]);
-                    this.$set(this, "loading", false);
+                        this.items = [...this.items, ...transactionsRes.data];
+
+                    const { startId, endId } = this.getItemsInterval;
+
+                    Service.getTransfers(this.textField, startId, endId).then(
+                        (transferRes) => {
+                            this.merging(transferRes.data);
+                            this.loading = false;
+                        }
+                    );
                 })
                 .catch(() => {
                     console.log("Something wrong");
-                    this.$set(this, "loading", false);
+                    this.loading = false;
                 });
         },
         checkWallet() {
@@ -155,7 +167,7 @@ export default {
                     element.clientHeight
             ) {
                 let pageCount = this.items.length / this.itemsPerPage;
-                this.$set(this, "page", pageCount);
+                this.page = pageCount;
 
                 this.getTransactions("PATCH");
             }
@@ -173,15 +185,35 @@ export default {
             let currentSender = initiator ? initiator.alias : sender.alias;
             return currentSender;
         },
+        merging(transferData) {
+            let idsCollection = new Map();
+            const { startIndex, endIndex } = this.getItemsInterval;
+
+            for (let i = startIndex; i <= endIndex; i++) {
+                idsCollection.set(this.items[i].id, i);
+            }
+
+            transferData.forEach((el) => {
+                const indexInItems = idsCollection.get(el.transactionId);
+                this.items[indexInItems].transfers = [];
+                this.items[indexInItems].transfers.push(el);
+            });
+        },
     },
     computed: {
-        columns() {
-            return [
-                { text: "Hash", value: "hash" },
-                { text: "Amount", value: "amount" },
-            ];
-        },
+        getItemsInterval() {
+            let startIndex,
+                startId,
+                endIndex,
+                endId = null;
 
+            startIndex = this.page * this.itemsPerPage;
+            startId = this.items[startIndex].id;
+            endIndex = startIndex + this.itemsPerPage - 1;
+            endId = this.items[endIndex].id;
+
+            return { startIndex, startId, endIndex, endId };
+        },
         ripple() {
             return {
                 color: "primary--text",

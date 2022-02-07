@@ -103,8 +103,7 @@
 
 <script>
 /* TODO:
-  Пришлось увеличить кнопку до 48рх, подумать как избежать такого
-  Тень на инпуте и кнопках разная, исправить
+  
 */
 
 import Service from "../services/request-service";
@@ -119,6 +118,8 @@ export default {
             page: 0,
             benched: 0,
             loading: false,
+            homelessTransfersCount: 0,
+            homelessTransfers: [],
         };
     },
     methods: {
@@ -129,8 +130,10 @@ export default {
             this.$set(this, "page", 0);
             this.$set(this, "benched", 0);
         },
+
         getTransactions(method) {
             this.loading = true;
+            let rawItems = [...this.items];
 
             Service.getTransactions(
                 this.textField,
@@ -138,27 +141,29 @@ export default {
                 this.page
             )
                 .then((transactionsRes) => {
-                    if (method === "PUT") this.items = transactionsRes.data;
+                    if (method === "PUT") rawItems = transactionsRes.data;
                     if (method === "PATCH")
-                        this.items = [...this.items, ...transactionsRes.data];
+                        rawItems = [...this.items, ...transactionsRes.data];
 
-                    const { startId, endId } = this.getItemsInterval;
+                    const { startId, endId } = this.getItemsInterval(rawItems);
 
                     Service.getTransfers(this.textField, startId, endId).then(
                         (transferRes) => {
-                            this.merging(transferRes.data);
+                            this.merging(transferRes.data, rawItems);
                             this.loading = false;
                         }
                     );
                 })
-                .catch(() => {
-                    console.log("Something wrong");
+                .catch((error) => {
+                    console.log("Something wrong", error);
                     this.loading = false;
                 });
         },
+
         checkWallet() {
             this.getTransactions("PUT");
         },
+
         scrolling(event) {
             const element = event.currentTarget || event.target;
             if (
@@ -166,54 +171,125 @@ export default {
                 element.scrollHeight - element.scrollTop ===
                     element.clientHeight
             ) {
-                let pageCount = this.items.length / this.itemsPerPage;
+                let pageCount = Math.floor(
+                    this.items.length / this.itemsPerPage
+                );
                 this.page = pageCount;
 
                 this.getTransactions("PATCH");
             }
         },
+
         rowClick(hash) {
             const url = `https://tzkt.io/${hash}`;
             window.open(url, "_blank").focus();
         },
+
         goToTzKT() {
             window.open("https://tzkt.io/", "_blank").focus();
         },
+
         senderOrInitiator(item) {
             const { sender, initiator } = item;
 
-            let currentSender = initiator ? initiator.alias : sender.alias;
+            let currentSender = initiator
+                ? initiator.alias || initiator.address
+                : sender.alias || sender.address;
             return currentSender;
         },
-        merging(transferData) {
+
+        merging(transferData, rawItems) {
             let idsCollection = new Map();
-            const { startIndex, endIndex } = this.getItemsInterval;
+            const { startIndex, endIndex } = this.getItemsInterval(rawItems);
 
             for (let i = startIndex; i <= endIndex; i++) {
-                idsCollection.set(this.items[i].id, i);
+                rawItems[i].transfers = [];
+                idsCollection.set(rawItems[i].id, i);
             }
 
             transferData.forEach((el) => {
                 const indexInItems = idsCollection.get(el.transactionId);
-                this.items[indexInItems].transfers = [];
-                this.items[indexInItems].transfers.push(el);
+
+                if (indexInItems === undefined) {
+                    this.homelessTransfers.push(el);
+                    console.log(
+                        "%c HOMELESS_TRANSACTION",
+                        "color: red",
+                        el.transactionId
+                    );
+                } else {
+                    rawItems[indexInItems].transfers.push(el);
+                }
             });
+            this.items = rawItems;
+            this.checkHomelessTransfers();
         },
-    },
-    computed: {
-        getItemsInterval() {
+
+        getItemsInterval(items) {
             let startIndex,
                 startId,
                 endIndex,
                 endId = null;
 
-            startIndex = this.page * this.itemsPerPage;
-            startId = this.items[startIndex].id;
+            startIndex =
+                this.page * this.itemsPerPage + this.homelessTransfersCount;
+            startId = items[startIndex].id;
             endIndex = startIndex + this.itemsPerPage - 1;
-            endId = this.items[endIndex].id;
+            endId = items[endIndex].id;
 
             return { startIndex, startId, endIndex, endId };
         },
+
+        checkHomelessTransfers() {
+            if (this.homelessTransfers.length) {
+                this.homelessTransfers.forEach((transfer) => {
+                    if (
+                        transfer.transactionId <
+                        this.items[this.items.length - 1].id
+                    ) {
+                        this.emergencyPushTransaction(transfer);
+                    }
+                });
+            }
+        },
+
+        emergencyPushTransaction(homelessTransfer) {
+            let transactionForPush = {};
+            let neededId = homelessTransfer.transactionId;
+
+            Service.getTransactionById(neededId).then((transaction) => {
+                transactionForPush = { ...transaction.data[0] };
+                transactionForPush.transfers = [];
+                transactionForPush.transfers.push(homelessTransfer);
+
+                if (Object.keys(transactionForPush).length) {
+                    for (let i = this.items.length - 1; i >= 0; i--) {
+                        if (
+                            this.items[i].id > neededId &&
+                            this.items[i - 1].id < neededId
+                        ) {
+                            this.items.splice(i, 0, transactionForPush);
+                            console.log(
+                                "%c ITEMS_AFTER_SPLICE",
+                                "color: green",
+                                this.items
+                            );
+                            return;
+                        }
+                    }
+                } else {
+                    console.log("emergencyPushTransaction: something wrong");
+                }
+            });
+
+            console.log("Items", this.items);
+            this.homelessTransfersCount++;
+            this.homelessTransfers = this.homelessTransfers.filter((el) => {
+                return el.transactionId !== neededId;
+            });
+        },
+    },
+    computed: {
         ripple() {
             return {
                 color: "primary--text",

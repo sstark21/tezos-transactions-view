@@ -9,6 +9,7 @@
     "deploy": "sh deploy.sh"
   },
   "dependencies": {
+    "@taquito/utils": "^11.2.0",
     "axios": "^0.25.0",
     "core-js": "^3.6.5",
     "vue": "^2.6.11",

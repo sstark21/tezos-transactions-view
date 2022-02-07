@@ -1,5 +1,17 @@
 <template>
     <v-container>
+        <v-snackbar
+            :value="snackbar.active"
+            top
+            right
+            color="orange accent-1"
+            timeout="3000"
+            content-class="deep-orange--text"
+            width="500"
+        >
+            Something went wrong: <strong>{{ snackbar.text }}</strong>
+        </v-snackbar>
+
         <v-row class="text-center">
             <v-col cols="12">
                 <v-img
@@ -19,6 +31,12 @@
         </v-row>
         <v-row align="center" justify="space-around">
             <v-col cols="10" class="d-flex">
+                <v-icon
+                    class="row-pointer theme-button"
+                    @click="$vuetify.theme.dark = !$vuetify.theme.dark"
+                >
+                    mdi-theme-light-dark
+                </v-icon>
                 <v-text-field
                     v-model="textField"
                     label="User address"
@@ -32,8 +50,9 @@
                     height="48"
                     :disabled="loading"
                     large
+                    elevation="5"
                     color="info"
-                    @click="checkWallet"
+                    @click="checkAddress"
                 >
                     Check
                 </v-btn>
@@ -45,6 +64,7 @@
                 indeterminate
                 color="primary"
             ></v-progress-circular>
+
             <v-card
                 class="mx-auto"
                 width="970"
@@ -52,13 +72,29 @@
                 tile
                 v-if="items.length"
                 transition="slide-x-transition"
+                style="position: relative"
             >
+                <v-btn
+                    v-show="fab"
+                    fab
+                    absolute
+                    bottom
+                    right
+                    color="primary"
+                    class="to-top-button"
+                    @click="$vuetify.goTo(0, { container: $refs.card })"
+                >
+                    <v-icon>mdi-arrow-up</v-icon>
+                </v-btn>
                 <v-virtual-scroll
+                    ref="card"
                     :bench="benched"
                     :items="items"
                     height="500"
                     item-height="100%"
                     @scroll.native="scrolling"
+                    class="overflow-x"
+                    :class="checkTheme"
                 >
                     <template v-slot:default="{ item }">
                         <v-list-item
@@ -78,9 +114,14 @@
                                         item.target.alias || item.target.address
                                     }}
                                 </v-list-item-title>
-                                <v-list-item-subtitle>
-                                    Secondary line text Lorem ipsum dolor sit
-                                    amet,
+                                <v-list-item-subtitle
+                                    class="d-flex justify-space-between"
+                                >
+                                    <span>{{ gasComputed(item) }}</span>
+                                    <span
+                                        >Amount:
+                                        <strong>{{ item.amount }}</strong></span
+                                    >
                                 </v-list-item-subtitle>
                                 <v-list-item-subtitle>
                                     Transfers:
@@ -102,11 +143,8 @@
 
 
 <script>
-/* TODO:
-  
-*/
-
 import Service from "../services/request-service";
+import { validateAddress } from "@taquito/utils";
 
 export default {
     name: "TransactionsView",
@@ -120,6 +158,12 @@ export default {
             loading: false,
             homelessTransfersCount: 0,
             homelessTransfers: [],
+            snackbar: {
+                active: false,
+                text: "",
+            },
+            lightTheme: true,
+            fab: false,
         };
     },
     methods: {
@@ -155,17 +199,27 @@ export default {
                     );
                 })
                 .catch((error) => {
-                    console.log("Something wrong", error);
+                    this.alertMessage(
+                        "GET_TRANSACTION_ERROR - contact administrator"
+                    );
+                    console.log(error);
                     this.loading = false;
                 });
         },
 
-        checkWallet() {
-            this.getTransactions("PUT");
+        checkAddress() {
+            if (validateAddress(this.textField) === 3) {
+                this.getTransactions("PUT");
+            } else {
+                this.alertMessage("unsupported address");
+            }
         },
 
         scrolling(event) {
             const element = event.currentTarget || event.target;
+
+            this.fab = element.scrollTop > 300;
+
             if (
                 element &&
                 element.scrollHeight - element.scrollTop ===
@@ -175,7 +229,6 @@ export default {
                     this.items.length / this.itemsPerPage
                 );
                 this.page = pageCount;
-
                 this.getTransactions("PATCH");
             }
         },
@@ -278,15 +331,26 @@ export default {
                         }
                     }
                 } else {
-                    console.log("emergencyPushTransaction: something wrong");
+                    this.alertMessage(
+                        "EMERGENCY_PUSH_TRANSACTION - contact administrator"
+                    );
                 }
             });
 
-            console.log("Items", this.items);
+            console.log("ITEMS_BEFORE_SPLICE", this.items);
             this.homelessTransfersCount++;
             this.homelessTransfers = this.homelessTransfers.filter((el) => {
                 return el.transactionId !== neededId;
             });
+        },
+        alertMessage(text) {
+            this.snackbar = {
+                active: true,
+                text,
+            };
+        },
+        gasComputed({ gasUsed, gasLimit }) {
+            return `Available gas: ${gasUsed} / ${gasLimit}`;
         },
     },
     computed: {
@@ -294,6 +358,9 @@ export default {
             return {
                 color: "primary--text",
             };
+        },
+        checkTheme() {
+            return this.$vuetify.theme.dark ? "dark" : "light";
         },
     },
 };
@@ -305,5 +372,59 @@ export default {
 }
 .row-pointer {
     cursor: pointer;
+}
+.row-pointer:hover {
+    transform: scale(1.01);
+    transition: all 0.2s ease-in-out;
+}
+.theme-button {
+    margin: 0 20px 20px 0;
+}
+.overflow-x {
+    overflow-x: hidden !important;
+}
+.v-icon.v-icon::after {
+    height: 0% !important;
+}
+.to-top-button {
+    margin: 0 -100px 30px 0;
+}
+
+.light::-webkit-scrollbar {
+    width: 15px;
+}
+
+.light::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border-left: 1px solid #dadada;
+}
+
+.light::-webkit-scrollbar-thumb {
+    background: #b0b0b0;
+    border: solid 3px #e6e6e6;
+    border-radius: 7px;
+}
+
+.light::-webkit-scrollbar-thumb:hover {
+    background: black;
+}
+
+.dark::-webkit-scrollbar {
+    width: 15px;
+}
+
+.dark::-webkit-scrollbar-track {
+    background: #202020;
+    border-left: 1px solid #2c2c2c;
+}
+
+.dark::-webkit-scrollbar-thumb {
+    background: #3e3e3e;
+    border: solid 3px #202020;
+    border-radius: 7px;
+}
+
+.dark::-webkit-scrollbar-thumb:hover {
+    background: white;
 }
 </style>
